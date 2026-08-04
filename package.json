@@ -1,0 +1,42 @@
+{
+  "name": "tavo-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publishable plugins for the Tavo.js framework.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tavojs/plugins.git"
+  },
+  "homepage": "https://github.com/tavojs/plugins#readme",
+  "bugs": {
+    "url": "https://github.com/tavojs/plugins/issues"
+  },
+  "workspaces": [
+    "packages/analytics",
+    "packages/sitemap"
+  ],
+  "scripts": {
+    "build": "npm --workspaces run build",
+    "test": "node --test tests/*.test.mjs && npm --workspaces test",
+    "pack:check": "npm pack --dry-run --workspace @tavojs/analytics && npm pack --dry-run --workspace @tavojs/sitemap",
+    "audit:release": "npm audit --omit=dev --audit-level=high",
+    "release:manifest": "node scripts/check-release.mjs",
+    "release:check": "npm run release:manifest && npm run build && npm test && npm run pack:check && npm run audit:release",
+    "release:status": "changeset status",
+    "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-descriptor-versions.mjs && npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
+    "release": "changeset publish"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "packageManager": "npm@11.5.1",
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7",
+    "@types/node": "^25.6.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "@tavojs/sitemap",
+  "version": "1.0.0",
+  "description": "Sitemap and robots.txt generation for Tavo.js apps.",
+  "type": "module",
+  "author": "Hrachya Martirosyan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tavojs/plugins.git",
+    "directory": "packages/sitemap"
+  },
+  "homepage": "https://tavojs.dev/docs/sitemap",
+  "bugs": {
+    "url": "https://github.com/tavojs/plugins/issues"
+  },
+  "keywords": [
+    "tavo",
+    "sitemap",
+    "robots-txt",
+    "seo",
+    "ssr"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test --import tsx tests/*.test.ts",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "peerDependencies": {
+    "@tavojs/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@tavojs/core": "^1.0.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "license": "MIT"
+}
