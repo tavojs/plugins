@@ -1,0 +1,59 @@
+{
+  "name": "@tavojs/structured-data",
+  "version": "1.0.0",
+  "description": "Metadata-driven Schema.org JSON-LD generation for Tavo.js apps.",
+  "type": "module",
+  "author": "Hrachya Martirosyan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tavojs/plugins.git",
+    "directory": "packages/structured-data"
+  },
+  "homepage": "https://tavojs.dev/docs/structured-data",
+  "bugs": {
+    "url": "https://github.com/tavojs/plugins/issues"
+  },
+  "keywords": [
+    "tavo",
+    "structured-data",
+    "json-ld",
+    "schema-org",
+    "seo"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run test:types && node --test --import tsx tests/*.test.ts",
+    "test:types": "tsc -p tsconfig.test.json",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "peerDependencies": {
+    "@tavojs/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@tavojs/core": "^1.0.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "license": "MIT"
+}

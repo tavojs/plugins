@@ -34,6 +34,10 @@ async function callEndpoint(
   return handler ? handler({ request } as never) : null;
 }
 
+function sitemapLocations(xml: string): string[] {
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]!);
+}
+
 test("declares standard server exposure and supports application remapping", () => {
   const plugin = createSitemapPlugin({
     siteUrl: "https://example.com",
@@ -113,6 +117,69 @@ test("renders validated sitemap XML with metadata and localized alternates", asy
   assert.match(output, /<lastmod>2026-07-20<\/lastmod>/);
   assert.match(output, /<changefreq>weekly<\/changefreq>/);
   assert.match(output, /<priority>0\.8<\/priority>/);
+});
+
+test("normalizes explicit entry and alternate trailing slashes", async () => {
+  const output = await renderSitemap({
+    siteUrl: "https://example.com",
+    entries: [
+      { path: "/", trailingSlash: true },
+      {
+        path: "/about",
+        trailingSlash: true,
+        alternates: {
+          en: "/about",
+          es: "https://example.com/es/about/",
+          fr: "/fr/about//"
+        }
+      },
+      { path: "https://example.com/contact?from=sitemap", trailingSlash: true },
+      { path: "/without/", trailingSlash: false },
+      { path: "/remove-file.json/", trailingSlash: false },
+      "/llms.txt",
+      "/manifest.json",
+      "/sitemap.xml",
+      { path: "/explicit-file.json", trailingSlash: true }
+    ]
+  });
+
+  assert.deepEqual(sitemapLocations(output), [
+    "https://example.com/",
+    "https://example.com/about/",
+    "https://example.com/contact/?from=sitemap",
+    "https://example.com/without",
+    "https://example.com/remove-file.json",
+    "https://example.com/llms.txt",
+    "https://example.com/manifest.json",
+    "https://example.com/sitemap.xml",
+    "https://example.com/explicit-file.json/"
+  ]);
+  assert.match(output, /hreflang="en" href="https:\/\/example\.com\/about\/"/);
+  assert.match(output, /hreflang="es" href="https:\/\/example\.com\/es\/about\/"/);
+  assert.match(output, /hreflang="fr" href="https:\/\/example\.com\/fr\/about\/"/);
+});
+
+test("preserves slash output by default and detects duplicates after normalization", async () => {
+  const output = await renderSitemap({
+    siteUrl: "https://example.com",
+    entries: ["/about", "/contact/", "/asset.json"]
+  });
+
+  assert.deepEqual(sitemapLocations(output), [
+    "https://example.com/about",
+    "https://example.com/contact/",
+    "https://example.com/asset.json"
+  ]);
+  await assert.rejects(
+    renderSitemap({
+      siteUrl: "https://example.com",
+      entries: [
+        { path: "/same", trailingSlash: true },
+        "https://example.com/same/"
+      ]
+    }),
+    /duplicate URL "https:\/\/example\.com\/same\/"/
+  );
 });
 
 test("supports async request-time entry sources", async () => {
@@ -395,6 +462,62 @@ test("automatic routes emit during builds and explicit entries override their me
   assert.match(sitemap, /<loc>https:\/\/example\.com\/blog\/first-post<\/loc>/);
   assert.match(sitemap, /<priority>1<\/priority>/);
   assert.doesNotMatch(sitemap, /\[slug\]|sitemap\.xml<\/loc>/);
+});
+
+test("applies discovered trailing slashes to static and runtime sitemaps", async () => {
+  const root = await mkdtemp(join(tmpdir(), "tavo-sitemap-trailing-slash-"));
+  await Promise.all([
+    writePage(root, "src/pages/index.tsx"),
+    writePage(root, "src/pages/about.tsx"),
+    writePage(root, "src/pages/contact.tsx"),
+    writePage(root, "src/pages/feed.xml.tsx")
+  ]);
+  const plugin = createSitemapPlugin({
+    siteUrl: "https://example.com",
+    autoDiscover: { trailingSlash: true },
+    entries: [
+      { path: "https://example.com/about", trailingSlash: true, priority: 1 },
+      { path: "/blog/first-post", trailingSlash: true },
+      "/llms.txt",
+      "/manifest.json"
+    ]
+  });
+  const vitePlugin = await sitemapVitePlugin(plugin) as {
+    config(config: { root: string }): Promise<{ define: Record<string, string> }>;
+    configResolved(config: { build?: { ssr?: unknown } }): void;
+    generateBundle(this: {
+      emitFile(file: { fileName: string; source: string }): void;
+    }): Promise<void>;
+  };
+  await vitePlugin.config({ root });
+
+  const emitted: Array<{ fileName: string; source: string }> = [];
+  vitePlugin.configResolved({ build: { ssr: false } });
+  await vitePlugin.generateBundle.call({
+    emitFile(file) {
+      emitted.push(file);
+    }
+  });
+  const staticXml = emitted.find((file) => file.fileName === "sitemap.xml")?.source ?? "";
+  const response = await callEndpoint(
+    plugin,
+    "sitemap",
+    new Request("https://example.com/sitemap.xml")
+  );
+  const runtimeXml = await response!.text();
+
+  assert.equal(runtimeXml, staticXml);
+  assert.deepEqual(sitemapLocations(staticXml), [
+    "https://example.com/",
+    "https://example.com/contact/",
+    "https://example.com/feed.xml",
+    "https://example.com/about/",
+    "https://example.com/blog/first-post/",
+    "https://example.com/llms.txt",
+    "https://example.com/manifest.json"
+  ]);
+  assert.equal((staticXml.match(/https:\/\/example\.com\/about\//g) ?? []).length, 1);
+  assert.match(staticXml, /<priority>1<\/priority>/);
 });
 
 test("Vite middleware serves sitemap GET routes during development", async () => {

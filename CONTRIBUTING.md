@@ -1,9 +1,10 @@
 # Contributing to Tavo.js Plugins
 
 Thank you for contributing to the Tavo.js Plugins monorepo. Workspaces live
-under `packages/`. `@tavojs/analytics` and `@tavojs/sitemap` are public packages,
-while `@tavojs/auth` and `@tavojs/fsm` are private workspaces whose source is
-excluded from the public repository.
+under `packages/`. `@tavojs/analytics`, `@tavojs/sitemap`, and
+`@tavojs/structured-data` are public packages, while `@tavojs/auth` and
+`@tavojs/fsm` are private workspaces whose source is excluded from the public
+repository.
 
 ## Development workflow
 

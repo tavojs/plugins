@@ -8,7 +8,7 @@ import { createAnalyticsPlugin } from "@tavojs/analytics";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packagesRoot = path.join(root, "packages");
-const packages = ["analytics", "auth", "fsm", "sitemap"].filter((name) =>
+const packages = ["analytics", "auth", "fsm", "sitemap", "structured-data"].filter((name) =>
   existsSync(path.join(packagesRoot, name, "package.json"))
 );
 const supportedNodeRange = "^20.19.0 || >=22.12.0";
@@ -65,7 +65,8 @@ test("client, server, and build phases stay behind separate module boundaries", 
     analytics: ["server"],
     auth: ["server", "build"],
     fsm: ["phase"],
-    sitemap: ["server", "build"]
+    sitemap: ["server", "build"],
+    "structured-data": ["server"]
   };
 
   for (const [packageDirectory, phases] of Object.entries(expectedDynamicPhases)) {

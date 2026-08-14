@@ -80,6 +80,22 @@ createSitemapPlugin({
 })
 ```
 
+For static deployments that serve HTML routes with trailing slashes, normalize
+automatically discovered pages to their canonical URLs:
+
+```ts
+createSitemapPlugin({
+  siteUrl: "https://example.com",
+  autoDiscover: {
+    exclude: ["/admin/*"],
+    trailingSlash: true
+  }
+})
+```
+
+The root remains `/`, and file-like discovered paths remain unchanged. Set
+`trailingSlash: false` to remove a trailing slash from discovered pages instead.
+
 Set `autoDiscover: false` to use only explicit entries.
 
 ## Explicit Entries
@@ -92,6 +108,7 @@ createSitemapPlugin({
     "/about",
     {
       path: "/blog/hello",
+      trailingSlash: true,
       lastModified: "2026-07-20",
       changeFrequency: "weekly",
       priority: 0.8
@@ -99,6 +116,13 @@ createSitemapPlugin({
   ]
 })
 ```
+
+An entry object's `trailingSlash` setting applies to both its `path` and every
+URL in `alternates`. It leaves `/` unchanged, adds or removes one trailing slash
+without duplicating it, and supports relative or absolute same-origin URLs.
+String entries retain their existing spelling, so file URLs such as `/llms.txt`,
+`/manifest.json`, and `/sitemap.xml` stay unchanged unless they are converted to
+objects with an explicit `trailingSlash` override.
 
 ## Dynamic Entries
 

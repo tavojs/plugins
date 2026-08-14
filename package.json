@@ -15,12 +15,13 @@
   },
   "workspaces": [
     "packages/analytics",
-    "packages/sitemap"
+    "packages/sitemap",
+    "packages/structured-data"
   ],
   "scripts": {
     "build": "npm --workspaces run build",
     "test": "node --test tests/*.test.mjs && npm --workspaces test",
-    "pack:check": "npm pack --dry-run --workspace @tavojs/analytics && npm pack --dry-run --workspace @tavojs/sitemap",
+    "pack:check": "npm pack --dry-run --workspace @tavojs/analytics && npm pack --dry-run --workspace @tavojs/sitemap && npm pack --dry-run --workspace @tavojs/structured-data",
     "audit:release": "npm audit --omit=dev --audit-level=high",
     "release:manifest": "node scripts/check-release.mjs",
     "release:check": "npm run release:manifest && npm run build && npm test && npm run pack:check && npm run audit:release",

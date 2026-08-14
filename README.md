@@ -8,6 +8,7 @@ Official plugins for the [Tavo.js](https://tavojs.dev) framework.
 | --- | --- |
 | [`@tavojs/analytics`](./packages/analytics) | Google Analytics and Google Tag Manager integration with configurable consent-aware loading. |
 | [`@tavojs/sitemap`](./packages/sitemap) | Automatic `sitemap.xml` and optional `robots.txt` generation for SSR and static builds. |
+| [`@tavojs/structured-data`](./packages/structured-data) | Metadata-driven Schema.org JSON-LD generation for site identity, software applications, and breadcrumbs. |
 
 Each package is independently versioned and published to npm.
 
@@ -18,9 +19,10 @@ Install the plugins your application needs:
 ```sh
 npm install @tavojs/analytics
 npm install @tavojs/sitemap
+npm install @tavojs/structured-data
 ```
 
-Both packages use `@tavojs/core` as a peer dependency.
+All packages use `@tavojs/core` as a peer dependency.
 
 ## Quick start
 
@@ -61,6 +63,22 @@ export default defineConfig({
 See the [`@tavojs/sitemap` documentation](./packages/sitemap) for automatic
 page discovery, dynamic entries, metadata, exclusions, and deployment details.
 
+### Structured Data
+
+```tsx
+import { createStructuredDataSite } from "@tavojs/structured-data";
+
+export const structuredData = createStructuredDataSite({
+  siteUrl: "https://example.com",
+  website: { name: "Example" },
+  organization: { name: "Example Project" }
+});
+```
+
+See the [`@tavojs/structured-data` documentation](./packages/structured-data)
+for metadata resolvers, route applications, breadcrumbs, custom schemas, and
+global plugin mode.
+
 ## Requirements
 
 - Node.js `^20.19.0`, `^22.12.0`, or a newer supported release
@@ -83,6 +101,7 @@ Package-specific commands can use npm workspaces:
 ```sh
 npm test --workspace @tavojs/analytics
 npm test --workspace @tavojs/sitemap
+npm test --workspace @tavojs/structured-data
 ```
 
 ## Releases
