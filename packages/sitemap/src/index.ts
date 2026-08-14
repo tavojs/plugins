@@ -629,7 +629,7 @@ export const createSitemapPlugin: (
 
   return {
     id: "@tavojs/sitemap",
-    version: "1.0.0",
+    version: "1.0.1",
     apiVersion: 1,
     manifest: {
       endpoints: [
