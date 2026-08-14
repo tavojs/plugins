@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const packageDirectories = ["analytics", "auth", "fsm", "sitemap"];
+const packageDirectories = ["analytics", "auth", "fsm", "sitemap", "structured-data"];
 
 for (const directory of packageDirectories) {
   const packageRoot = path.join(root, "packages", directory);

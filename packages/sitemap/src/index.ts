@@ -102,7 +102,18 @@ function normalizeLimit(value: number | undefined, fallback: number, maximum: nu
   return normalized;
 }
 
-function resolveSiteUrl(site: URL, value: string, label: string): string {
+function assertTrailingSlash(value: unknown, label: string): asserts value is boolean | undefined {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new Error(`tavo sitemap: ${label} must be a boolean.`);
+  }
+}
+
+function resolveSiteUrl(
+  site: URL,
+  value: string,
+  label: string,
+  trailingSlash?: boolean
+): string {
   if (!value.trim()) {
     throw new Error(`tavo sitemap: ${label} must not be empty.`);
   }
@@ -121,7 +132,17 @@ function resolveSiteUrl(site: URL, value: string, label: string): string {
   ) {
     throw new Error(`tavo sitemap: ${label} must resolve to the siteUrl origin.`);
   }
+  if (trailingSlash !== undefined && resolved.pathname !== "/") {
+    const pathname = resolved.pathname.replace(/\/+$/, "");
+    resolved.pathname = trailingSlash ? `${pathname}/` : pathname || "/";
+  }
   return resolved.href;
+}
+
+function isFileLikePath(site: URL, value: string): boolean {
+  const pathname = new URL(value, site).pathname.replace(/\/+$/, "");
+  const basename = pathname.slice(pathname.lastIndexOf("/") + 1);
+  return basename.includes(".");
 }
 
 function normalizeLastModified(value: Date | string): string {
@@ -147,7 +168,10 @@ function normalizeLastModified(value: Date | string): string {
   throw new Error(`tavo sitemap: lastModified must be an ISO date or date-time, received "${value}".`);
 }
 
-function normalizeEntry(input: SitemapEntryInput, site: URL): Required<Pick<SitemapEntry, "path">> & Omit<SitemapEntry, "path"> {
+type NormalizedSitemapEntry = Required<Pick<SitemapEntry, "path">> &
+  Omit<SitemapEntry, "path" | "trailingSlash">;
+
+function normalizeEntry(input: SitemapEntryInput, site: URL): NormalizedSitemapEntry {
   const entry = typeof input === "string" ? { path: input } : input;
   if (!entry || typeof entry !== "object" || typeof entry.path !== "string") {
     throw new Error("tavo sitemap: every entry must be a path string or an object with a path.");
@@ -161,17 +185,23 @@ function normalizeEntry(input: SitemapEntryInput, site: URL): Required<Pick<Site
   ) {
     throw new Error("tavo sitemap: priority must be a finite number between 0 and 1.");
   }
+  assertTrailingSlash(entry.trailingSlash, "entry trailingSlash");
 
   const alternates: Record<string, string> = {};
   for (const [language, path] of Object.entries(entry.alternates ?? {})) {
     if (!LANGUAGE_CODE.test(language)) {
       throw new Error(`tavo sitemap: invalid alternate language code "${language}".`);
     }
-    alternates[language] = resolveSiteUrl(site, path, `alternate "${language}"`);
+    alternates[language] = resolveSiteUrl(
+      site,
+      path,
+      `alternate "${language}"`,
+      entry.trailingSlash
+    );
   }
 
   return {
-    path: resolveSiteUrl(site, entry.path, "entry path"),
+    path: resolveSiteUrl(site, entry.path, "entry path", entry.trailingSlash),
     ...(Object.keys(alternates).length > 0 ? { alternates } : {}),
     ...(entry.changeFrequency === undefined ? {} : { changeFrequency: entry.changeFrequency }),
     ...(entry.lastModified === undefined ? {} : { lastModified: normalizeLastModified(entry.lastModified) }),
@@ -272,12 +302,6 @@ export async function renderSitemap(
   return renderSitemapEntries(options, await resolveSourceEntries(options.entries, context));
 }
 
-function inputPath(input: SitemapEntryInput): string {
-  if (typeof input === "string") return input;
-  if (input && typeof input === "object" && typeof input.path === "string") return input.path;
-  throw new Error("tavo sitemap: every entry must be a path string or an object with a path.");
-}
-
 async function renderDiscoveredSitemap(
   options: CreateSitemapPluginOptions,
   discoveredPaths: readonly string[],
@@ -286,10 +310,18 @@ async function renderDiscoveredSitemap(
   const explicit = await resolveSourceEntries(options.entries, context);
   const site = normalizeSiteUrl(options.siteUrl);
   const explicitUrls = new Set(
-    explicit.map((entry) => resolveSiteUrl(site, inputPath(entry), "entry path"))
+    explicit.map((entry) => normalizeEntry(entry, site).path)
   );
-  const automatic = discoveredPaths.filter(
-    (path) => !explicitUrls.has(resolveSiteUrl(site, path, "discovered route"))
+  const discoveredTrailingSlash = typeof options.autoDiscover === "object"
+    ? options.autoDiscover.trailingSlash
+    : undefined;
+  const discoveredEntries: SitemapEntryInput[] = discoveredPaths.map((path) =>
+    discoveredTrailingSlash === undefined || isFileLikePath(site, path)
+      ? path
+      : { path, trailingSlash: discoveredTrailingSlash }
+  );
+  const automatic = discoveredEntries.filter(
+    (entry) => !explicitUrls.has(normalizeEntry(entry, site).path)
   );
   return renderSitemapEntries(options, [...automatic, ...explicit]);
 }
@@ -525,6 +557,9 @@ export const createSitemapPlugin: (
     : options.autoDiscover === true || options.autoDiscover === undefined
       ? {}
       : options.autoDiscover;
+  if (autoDiscover !== false) {
+    assertTrailingSlash(autoDiscover.trailingSlash, "autoDiscover.trailingSlash");
+  }
   if (autoDiscover === false && options.entries === undefined) {
     throw new Error("tavo sitemap: entries are required when autoDiscover is disabled.");
   }

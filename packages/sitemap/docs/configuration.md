@@ -3,7 +3,7 @@
 ## Sitemap
 
 - `siteUrl`: required absolute HTTP(S) origin. Paths, credentials, queries, and fragments are rejected.
-- `autoDiscover`: discovers Tavo.js file routes and defaults to `true`. Pass `false` or `{ pagesDir, exclude }`.
+- `autoDiscover`: discovers Tavo.js file routes and defaults to `true`. Pass `false` or `{ pagesDir, exclude, trailingSlash }`. The optional boolean trailing-slash policy applies to discovered HTML page routes while leaving `/` and file-like paths unchanged.
 - `entries`: optional extra entries or metadata overrides; accepts an array, iterable, async iterable, or callback.
 - `path`: public sitemap path; defaults to `/sitemap.xml`.
 - `cacheControl`: response cache policy; defaults to `public, max-age=0, s-maxage=3600`. Set `false` to omit it.
@@ -16,6 +16,7 @@ Entries accept a path string or an object:
 ```ts
 {
   path: "/products/widget",
+  trailingSlash: true,
   lastModified: "2026-07-20",
   changeFrequency: "weekly",
   priority: 0.7,
@@ -27,6 +28,8 @@ Entries accept a path string or an object:
 ```
 
 `lastModified` accepts a valid `Date`, an ISO date, or an ISO date-time with a timezone. `priority` must be between zero and one.
+
+`trailingSlash: true` adds one trailing slash and `trailingSlash: false` removes it, except that `/` is always preserved. The entry-level policy also normalizes every alternate-language URL and works with relative and absolute same-origin paths. String entries and objects that omit the setting keep their current output, including file URLs such as `/llms.txt`, `/manifest.json`, and `/sitemap.xml`.
 
 ## Robots
 

@@ -5,7 +5,8 @@ const root = process.cwd();
 const repositoryUrl = "git+https://github.com/tavojs/plugins.git";
 const publicPackages = [
   ["@tavojs/analytics", "packages/analytics"],
-  ["@tavojs/sitemap", "packages/sitemap"]
+  ["@tavojs/sitemap", "packages/sitemap"],
+  ["@tavojs/structured-data", "packages/structured-data"]
 ];
 const privatePackages = [
   ["@tavojs/auth", "packages/auth"],
@@ -16,7 +17,8 @@ const expectedCopyright = "Copyright (c) 2026 Hrachya Martirosyan and contributo
 const legalFiles = [
   "LICENSE",
   "packages/analytics/LICENSE",
-  "packages/sitemap/LICENSE"
+  "packages/sitemap/LICENSE",
+  "packages/structured-data/LICENSE"
 ];
 const publicLegalEntries = ["LICENSE", "CONTRIBUTING.md", "TRADEMARKS.md", "SECURITY.md"];
 
@@ -68,6 +70,7 @@ if (fs.existsSync(exportScriptPath)) {
   }
   assert(publicEntriesSource.includes('"packages/analytics"'), "Public export must include packages/analytics.");
   assert(publicEntriesSource.includes('"packages/sitemap"'), "Public export must include packages/sitemap.");
+  assert(publicEntriesSource.includes('"packages/structured-data"'), "Public export must include packages/structured-data.");
   assert(!publicEntriesSource.includes('"packages/auth"'), "Public export must exclude packages/auth.");
   assert(!publicEntriesSource.includes('"packages/fsm"'), "Public export must exclude packages/fsm.");
 }

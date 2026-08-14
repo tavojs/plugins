@@ -16,6 +16,8 @@ export type SitemapEntry = {
   changeFrequency?: SitemapChangeFrequency;
   lastModified?: Date | string;
   priority?: number;
+  /** Adds or removes a trailing slash from this entry and its alternate URLs. */
+  trailingSlash?: boolean;
 };
 
 export type SitemapEntryInput = string | SitemapEntry;
@@ -40,6 +42,8 @@ export type SitemapAutoDiscoverOptions = {
   exclude?: readonly (string | RegExp)[];
   /** Overrides Tavo.js's configured pagesDir. Normally detected automatically. */
   pagesDir?: string;
+  /** Adds or removes trailing slashes from discovered page routes. */
+  trailingSlash?: boolean;
 };
 
 export type RobotsRule = {
