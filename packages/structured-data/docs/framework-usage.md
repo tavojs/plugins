@@ -24,6 +24,26 @@ const site = createStructuredDataSite({
 });
 ```
 
+Install a policy-binding plugin beside the site helper so it receives the same
+resolved routing policy as canonical links and framework navigation:
+
+```ts
+const structuredDataPlugin = createStructuredDataPlugin({ site });
+
+export default {
+  routing: { trailingSlash: "always" },
+  plugins: [structuredDataPlugin]
+};
+```
+
+If the helper is used outside an installed Tavo.js plugin, configure the same
+policy explicitly with `urlPolicy: { trailingSlash: "always" }`. Supported
+values are `"always"`, `"never"`, and `"preserve"`.
+
+Only site-relative page identities are formatted. Explicit absolute URLs,
+query strings, fragments, entity IDs, and resource URLs retain their existing
+meaning. File-like URLs never gain a slash.
+
 `site.data(context)` returns normalized nodes for inspection or custom
 rendering. `site.head(context)` returns a Tavo.js head child, or `null` when the
 route has no selected schema.

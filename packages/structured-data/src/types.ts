@@ -31,6 +31,18 @@ export type StructuredDataProps = StructuredDataScriptProps & {
   data: StructuredDataDocument;
 };
 
+export type StructuredDataTrailingSlashPolicy =
+  | "always"
+  | "never"
+  | "preserve";
+
+/** The routing policy used to format site-relative page URLs. */
+export type StructuredDataUrlPolicy = {
+  readonly trailingSlash: StructuredDataTrailingSlashPolicy;
+  /** Compatible with the framework's resolved URL-policy shape. */
+  readonly canonicalize?: (url: string) => string;
+};
+
 export type WebSiteMetadata = {
   alternateName?: string | readonly string[];
   description?: string;
@@ -66,6 +78,7 @@ export type BreadcrumbListMetadata = {
   id?: string;
   items: readonly StructuredDataBreadcrumb[];
   siteUrl: string;
+  urlPolicy?: StructuredDataUrlPolicy;
 };
 
 export type SoftwareApplicationCategory =
@@ -116,6 +129,7 @@ export type SoftwareApplicationMetadata = {
 
 export type CreateSoftwareApplicationOptions = SoftwareApplicationMetadata & {
   siteUrl: string;
+  urlPolicy?: StructuredDataUrlPolicy;
 };
 
 export type ConfiguredSoftwareApplication = SoftwareApplicationMetadata & {
@@ -139,6 +153,8 @@ export type CreateStructuredDataSiteOptions = {
   organization: Omit<OrganizationMetadata, "siteUrl">;
   resolve?: StructuredDataResolver;
   siteUrl: string;
+  /** Explicit fallback when no installed plugin can read framework context. */
+  urlPolicy?: StructuredDataUrlPolicy;
   website: Omit<WebSiteMetadata, "publisherId" | "siteUrl">;
 };
 
@@ -178,10 +194,22 @@ export type StructuredDataAdapter<T> = {
   from(value: T, context?: PageLoadContext): PageStructuredDataMetadata;
 };
 
-export type CreateStructuredDataPluginOptions = StructuredDataScriptProps & {
-  data: StructuredDataDocument;
-};
+export type CreateStructuredDataPluginOptions = StructuredDataScriptProps &
+  (
+    | {
+        /** Existing global JSON-LD contribution. */
+        data: StructuredDataDocument;
+        /** Also binds a site helper to the framework-resolved URL policy. */
+        site?: StructuredDataSite;
+      }
+    | {
+        data?: never;
+        /** Binds a site helper to the framework-resolved URL policy. */
+        site: StructuredDataSite;
+      }
+  );
 
 export type StructuredDataPlugin = TavoPlugin & {
+  /** Empty in policy-binding-only mode. */
   readonly structuredData: StructuredDataDocument;
 };

@@ -23,6 +23,8 @@ import { createStructuredDataSite } from "@tavojs/structured-data";
 
 export const structuredData = createStructuredDataSite({
   siteUrl: "https://example.com",
+  // Use this explicit fallback when the helper is not installed as a plugin.
+  urlPolicy: { trailingSlash: "always" },
   website: {
     name: "Example",
     alternateName: ["example.com"]
@@ -74,6 +76,36 @@ export function head(context: PageLoadContext) {
 The homepage emits `WebSite`, `Organization`, and the configured
 `SoftwareApplication` in one `@graph`. The documentation route emits only its
 `BreadcrumbList`. Routes without metadata emit no JSON-LD.
+
+## URL Policy
+
+Site-relative page URLs follow `routing.trailingSlash` when the site helper is
+bound through the plugin context:
+
+```ts
+import {
+  createStructuredDataPlugin,
+  createStructuredDataSite
+} from "@tavojs/structured-data";
+
+const structuredData = createStructuredDataSite({
+  siteUrl: "https://example.com",
+  website: { name: "Example" },
+  organization: { name: "Example" }
+});
+
+export default {
+  routing: { trailingSlash: "always" },
+  plugins: [createStructuredDataPlugin({ site: structuredData })]
+};
+```
+
+For standalone use, pass `urlPolicy: { trailingSlash: "always" | "never" |
+"preserve" }` to `createStructuredDataSite()`, `createBreadcrumbList()`, or
+`createSoftwareApplication()`. The policy applies to breadcrumb items,
+application pages, and offer pages. It retains queries and fragments, leaves
+explicit absolute URLs unchanged, preserves entity IDs such as
+`/#organization`, and never appends a slash to file resources.
 
 ## Loader Data
 

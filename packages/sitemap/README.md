@@ -80,21 +80,22 @@ createSitemapPlugin({
 })
 ```
 
-For static deployments that serve HTML routes with trailing slashes, normalize
-automatically discovered pages to their canonical URLs:
+Sitemap URLs follow the framework's resolved `routing.trailingSlash` policy by
+default. Override it for this sitemap with `autoDiscover.trailingSlash`:
 
 ```ts
 createSitemapPlugin({
   siteUrl: "https://example.com",
   autoDiscover: {
     exclude: ["/admin/*"],
-    trailingSlash: true
+    trailingSlash: "always"
   }
 })
 ```
 
-The root remains `/`, and file-like discovered paths remain unchanged. Set
-`trailingSlash: false` to remove a trailing slash from discovered pages instead.
+Use `"always"`, `"never"`, or `"preserve"`. The legacy boolean values `true`
+and `false` remain supported as aliases for `"always"` and `"never"`. The root
+remains `/`, and file-like resources remain unchanged by `"always"`.
 
 Set `autoDiscover: false` to use only explicit entries.
 
@@ -108,7 +109,7 @@ createSitemapPlugin({
     "/about",
     {
       path: "/blog/hello",
-      trailingSlash: true,
+      trailingSlash: "always",
       lastModified: "2026-07-20",
       changeFrequency: "weekly",
       priority: 0.8
@@ -117,12 +118,11 @@ createSitemapPlugin({
 })
 ```
 
-An entry object's `trailingSlash` setting applies to both its `path` and every
-URL in `alternates`. It leaves `/` unchanged, adds or removes one trailing slash
-without duplicating it, and supports relative or absolute same-origin URLs.
-String entries retain their existing spelling, so file URLs such as `/llms.txt`,
-`/manifest.json`, and `/sitemap.xml` stay unchanged unless they are converted to
-objects with an explicit `trailingSlash` override.
+An entry object's `trailingSlash` setting overrides `autoDiscover.trailingSlash`
+and the framework policy for both its `path` and every URL in `alternates`.
+Queries are retained. File-like resources such as `/llms.txt`, `/manifest.json`,
+images, and `/sitemap.xml` never gain a trailing slash. Boolean entry overrides
+remain supported for backward compatibility.
 
 ## Dynamic Entries
 

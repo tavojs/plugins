@@ -53,6 +53,7 @@ function resolveWebsiteStructuredData(
 
 const structuredData = createStructuredDataSite({
   siteUrl: "https://tavojs.dev",
+  urlPolicy: { trailingSlash: "always" },
   website: { name: "Tavo.js", alternateName: ["tavojs.dev"] },
   organization: {
     name: "Tavo.js",
@@ -141,3 +142,5 @@ void createStructuredDataPlugin({
   id: "global-schema",
   data: customSchema
 });
+
+void createStructuredDataPlugin({ site: structuredData });

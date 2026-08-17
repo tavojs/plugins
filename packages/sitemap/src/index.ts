@@ -10,7 +10,9 @@ import type {
   SitemapEntryInput,
   SitemapPlugin,
   SitemapRuntime,
-  SitemapSourceContext
+  SitemapSourceContext,
+  SitemapTrailingSlash,
+  SitemapTrailingSlashPolicy
 } from "./types.js";
 
 export type {
@@ -25,7 +27,9 @@ export type {
   SitemapEntrySource,
   SitemapPlugin,
   SitemapRuntime,
-  SitemapSourceContext
+  SitemapSourceContext,
+  SitemapTrailingSlash,
+  SitemapTrailingSlashPolicy
 } from "./types.js";
 export { discoverTavoPagePaths } from "./discovery.js";
 export type { DiscoverTavoPagePathsOptions } from "./discovery.js";
@@ -102,17 +106,27 @@ function normalizeLimit(value: number | undefined, fallback: number, maximum: nu
   return normalized;
 }
 
-function assertTrailingSlash(value: unknown, label: string): asserts value is boolean | undefined {
-  if (value !== undefined && typeof value !== "boolean") {
-    throw new Error(`tavo sitemap: ${label} must be a boolean.`);
+function assertTrailingSlash(value: unknown, label: string): asserts value is SitemapTrailingSlash | undefined {
+  if (
+    value !== undefined &&
+    typeof value !== "boolean" &&
+    value !== "always" &&
+    value !== "never" &&
+    value !== "preserve"
+  ) {
+    throw new Error(`tavo sitemap: ${label} must be a boolean, "always", "never", or "preserve".`);
   }
+}
+
+function normalizeTrailingSlash(value: SitemapTrailingSlash | undefined): SitemapTrailingSlashPolicy | undefined {
+  return typeof value === "boolean" ? (value ? "always" : "never") : value;
 }
 
 function resolveSiteUrl(
   site: URL,
   value: string,
   label: string,
-  trailingSlash?: boolean
+  trailingSlash: SitemapTrailingSlashPolicy = "preserve"
 ): string {
   if (!value.trim()) {
     throw new Error(`tavo sitemap: ${label} must not be empty.`);
@@ -132,15 +146,19 @@ function resolveSiteUrl(
   ) {
     throw new Error(`tavo sitemap: ${label} must resolve to the siteUrl origin.`);
   }
-  if (trailingSlash !== undefined && resolved.pathname !== "/") {
+  if (
+    trailingSlash !== "preserve" &&
+    resolved.pathname !== "/" &&
+    (trailingSlash === "never" || !isFileLikeUrl(resolved))
+  ) {
     const pathname = resolved.pathname.replace(/\/+$/, "");
-    resolved.pathname = trailingSlash ? `${pathname}/` : pathname || "/";
+    resolved.pathname = trailingSlash === "always" ? `${pathname}/` : pathname || "/";
   }
   return resolved.href;
 }
 
-function isFileLikePath(site: URL, value: string): boolean {
-  const pathname = new URL(value, site).pathname.replace(/\/+$/, "");
+function isFileLikeUrl(value: URL): boolean {
+  const pathname = value.pathname.replace(/\/+$/, "");
   const basename = pathname.slice(pathname.lastIndexOf("/") + 1);
   return basename.includes(".");
 }
@@ -171,7 +189,11 @@ function normalizeLastModified(value: Date | string): string {
 type NormalizedSitemapEntry = Required<Pick<SitemapEntry, "path">> &
   Omit<SitemapEntry, "path" | "trailingSlash">;
 
-function normalizeEntry(input: SitemapEntryInput, site: URL): NormalizedSitemapEntry {
+function normalizeEntry(
+  input: SitemapEntryInput,
+  site: URL,
+  defaultTrailingSlash: SitemapTrailingSlashPolicy = "preserve"
+): NormalizedSitemapEntry {
   const entry = typeof input === "string" ? { path: input } : input;
   if (!entry || typeof entry !== "object" || typeof entry.path !== "string") {
     throw new Error("tavo sitemap: every entry must be a path string or an object with a path.");
@@ -186,6 +208,7 @@ function normalizeEntry(input: SitemapEntryInput, site: URL): NormalizedSitemapE
     throw new Error("tavo sitemap: priority must be a finite number between 0 and 1.");
   }
   assertTrailingSlash(entry.trailingSlash, "entry trailingSlash");
+  const trailingSlash = normalizeTrailingSlash(entry.trailingSlash) ?? defaultTrailingSlash;
 
   const alternates: Record<string, string> = {};
   for (const [language, path] of Object.entries(entry.alternates ?? {})) {
@@ -196,12 +219,12 @@ function normalizeEntry(input: SitemapEntryInput, site: URL): NormalizedSitemapE
       site,
       path,
       `alternate "${language}"`,
-      entry.trailingSlash
+      trailingSlash
     );
   }
 
   return {
-    path: resolveSiteUrl(site, entry.path, "entry path", entry.trailingSlash),
+    path: resolveSiteUrl(site, entry.path, "entry path", trailingSlash),
     ...(Object.keys(alternates).length > 0 ? { alternates } : {}),
     ...(entry.changeFrequency === undefined ? {} : { changeFrequency: entry.changeFrequency }),
     ...(entry.lastModified === undefined ? {} : { lastModified: normalizeLastModified(entry.lastModified) }),
@@ -268,7 +291,8 @@ function renderNormalizedSitemap(entries: ReturnType<typeof normalizeEntry>[]): 
 /** Renders and validates one XML sitemap independently of the Tavo.js runtime. */
 function renderSitemapEntries(
   options: Pick<CreateSitemapPluginOptions, "maxBytes" | "maxEntries" | "siteUrl">,
-  inputs: SitemapEntryInput[]
+  inputs: SitemapEntryInput[],
+  defaultTrailingSlash: SitemapTrailingSlashPolicy = "preserve"
 ): string {
   const site = normalizeSiteUrl(options.siteUrl);
   const maxEntries = normalizeLimit(options.maxEntries, MAX_SITEMAP_ENTRIES, MAX_SITEMAP_ENTRIES, "maxEntries");
@@ -279,7 +303,7 @@ function renderSitemapEntries(
 
   const seen = new Set<string>();
   const entries = inputs.map((input) => {
-    const entry = normalizeEntry(input, site);
+    const entry = normalizeEntry(input, site, defaultTrailingSlash);
     if (seen.has(entry.path)) {
       throw new Error(`tavo sitemap: duplicate URL "${entry.path}".`);
     }
@@ -305,25 +329,24 @@ export async function renderSitemap(
 async function renderDiscoveredSitemap(
   options: CreateSitemapPluginOptions,
   discoveredPaths: readonly string[],
-  context: SitemapSourceContext
+  context: SitemapSourceContext,
+  frameworkTrailingSlash: SitemapTrailingSlashPolicy
 ): Promise<string> {
   const explicit = await resolveSourceEntries(options.entries, context);
   const site = normalizeSiteUrl(options.siteUrl);
-  const explicitUrls = new Set(
-    explicit.map((entry) => normalizeEntry(entry, site).path)
-  );
-  const discoveredTrailingSlash = typeof options.autoDiscover === "object"
-    ? options.autoDiscover.trailingSlash
+  const configuredTrailingSlash = typeof options.autoDiscover === "object"
+    ? normalizeTrailingSlash(options.autoDiscover.trailingSlash)
     : undefined;
-  const discoveredEntries: SitemapEntryInput[] = discoveredPaths.map((path) =>
-    discoveredTrailingSlash === undefined || isFileLikePath(site, path)
-      ? path
-      : { path, trailingSlash: discoveredTrailingSlash }
-  );
-  const automatic = discoveredEntries.filter(
-    (entry) => !explicitUrls.has(normalizeEntry(entry, site).path)
-  );
-  return renderSitemapEntries(options, [...automatic, ...explicit]);
+  const resolvedTrailingSlash = configuredTrailingSlash ?? frameworkTrailingSlash;
+  const routeIdentity = (value: SitemapEntryInput) => {
+    const entry = typeof value === "string" ? { path: value } : value;
+    const url = new URL(resolveSiteUrl(site, entry.path, "entry path"));
+    if (url.pathname !== "/") url.pathname = url.pathname.replace(/\/+$/, "");
+    return url.href;
+  };
+  const explicitRoutes = new Set(explicit.map(routeIdentity));
+  const automatic = discoveredPaths.filter((path) => !explicitRoutes.has(routeIdentity(path)));
+  return renderSitemapEntries(options, [...automatic, ...explicit], resolvedTrailingSlash);
 }
 
 function values(value: string | readonly string[] | undefined): readonly string[] {
@@ -576,6 +599,11 @@ export const createSitemapPlugin: (
   normalizeLimit(options.maxBytes, MAX_SITEMAP_BYTES, MAX_SITEMAP_BYTES, "maxBytes");
 
   let discoveredPaths = autoDiscover === false ? [] : compiledDiscoveredPaths();
+  let frameworkTrailingSlash: SitemapTrailingSlashPolicy = "preserve";
+  const setFrameworkTrailingSlash = (value: unknown) => {
+    assertTrailingSlash(value, "framework routing.trailingSlash");
+    frameworkTrailingSlash = normalizeTrailingSlash(value) ?? "preserve";
+  };
   const runtime: SitemapRuntime = {
     sitemapPath,
     ...(robotsPath === undefined ? {} : { robotsPath }),
@@ -586,7 +614,7 @@ export const createSitemapPlugin: (
       return robotsOptions ? renderRobotsTxt(options.siteUrl, sitemapPath, robotsOptions) : null;
     },
     renderSitemap(context = { mode: "build" }) {
-      return renderDiscoveredSitemap(options, discoveredPaths, context);
+      return renderDiscoveredSitemap(options, discoveredPaths, context, frameworkTrailingSlash);
     }
   };
   const emitStatic = options.emitStatic ?? (options.entries === undefined || Array.isArray(options.entries));
@@ -657,20 +685,27 @@ export const createSitemapPlugin: (
     sitemap: runtime,
     server: async () => {
       const { createSitemapServerPhase } = await import("./server.js");
-      return createSitemapServerPhase(handleSitemap, robotsPath ? handleRobots : undefined);
+      return createSitemapServerPhase(
+        handleSitemap,
+        robotsPath ? handleRobots : undefined,
+        setFrameworkTrailingSlash
+      );
     },
     build: async () => {
       const { createSitemapBuildPhase } = await import("./build.js");
-      return createSitemapBuildPhase(createVitePlugin(
-        runtime,
-        emitStatic,
-        handleRequest,
-        autoDiscover,
-        [sitemapPath, ...(robotsPath ? [robotsPath] : [])],
-        (paths) => {
-          discoveredPaths = paths;
-        }
-      ));
+      return createSitemapBuildPhase(
+        createVitePlugin(
+          runtime,
+          emitStatic,
+          handleRequest,
+          autoDiscover,
+          [sitemapPath, ...(robotsPath ? [robotsPath] : [])],
+          (paths) => {
+            discoveredPaths = paths;
+          }
+        ),
+        setFrameworkTrailingSlash
+      );
     }
   };
 });

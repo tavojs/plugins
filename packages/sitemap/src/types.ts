@@ -9,6 +9,11 @@ export type SitemapChangeFrequency =
   | "yearly"
   | "never";
 
+export type SitemapTrailingSlashPolicy = "always" | "never" | "preserve";
+
+/** Boolean values remain supported for backward compatibility. */
+export type SitemapTrailingSlash = SitemapTrailingSlashPolicy | boolean;
+
 export type SitemapEntry = {
   /** A site-relative path or an absolute URL on siteUrl's origin. */
   path: string;
@@ -16,8 +21,8 @@ export type SitemapEntry = {
   changeFrequency?: SitemapChangeFrequency;
   lastModified?: Date | string;
   priority?: number;
-  /** Adds or removes a trailing slash from this entry and its alternate URLs. */
-  trailingSlash?: boolean;
+  /** Overrides the trailing-slash policy for this entry and its alternate URLs. */
+  trailingSlash?: SitemapTrailingSlash;
 };
 
 export type SitemapEntryInput = string | SitemapEntry;
@@ -42,8 +47,8 @@ export type SitemapAutoDiscoverOptions = {
   exclude?: readonly (string | RegExp)[];
   /** Overrides Tavo.js's configured pagesDir. Normally detected automatically. */
   pagesDir?: string;
-  /** Adds or removes trailing slashes from discovered page routes. */
-  trailingSlash?: boolean;
+  /** Overrides the framework trailing-slash policy for sitemap URLs. */
+  trailingSlash?: SitemapTrailingSlash;
 };
 
 export type RobotsRule = {
