@@ -1,6 +1,6 @@
 {
   "name": "@tavojs/sitemap",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sitemap and robots.txt generation for Tavo.js apps.",
   "type": "module",
   "author": "Hrachya Martirosyan",
