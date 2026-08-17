@@ -657,7 +657,7 @@ export const createSitemapPlugin: (
 
   return {
     id: "@tavojs/sitemap",
-    version: "1.0.1",
+    version: "1.0.2",
     apiVersion: 1,
     manifest: {
       endpoints: [
