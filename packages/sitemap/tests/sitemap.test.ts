@@ -23,13 +23,46 @@ async function sitemapVitePlugin(plugin: ReturnType<typeof createSitemapPlugin>)
   return phase?.build?.plugins?.sitemap;
 }
 
+type TrailingSlashPolicy = "always" | "never" | "preserve";
+
+function setupContext(trailingSlash: TrailingSlashPolicy) {
+  return {
+    instanceId: "default",
+    resolve() {
+      throw new Error("not available in sitemap tests");
+    },
+    tryResolve() {
+      return undefined;
+    },
+    urlPolicy: {
+      trailingSlash,
+      canonicalize(value: string) {
+        return value;
+      }
+    }
+  } as never;
+}
+
+async function setupPluginPhase(
+  plugin: ReturnType<typeof createSitemapPlugin>,
+  phaseName: "build" | "server",
+  trailingSlash: TrailingSlashPolicy
+): Promise<any> {
+  const loaded = await plugin[phaseName]?.();
+  const phase = loaded && "default" in loaded ? loaded.default : loaded;
+  await phase?.setup?.(setupContext(trailingSlash));
+  return phase;
+}
+
 async function callEndpoint(
   plugin: ReturnType<typeof createSitemapPlugin>,
   id: "robots" | "sitemap",
-  request: Request
+  request: Request,
+  trailingSlash?: TrailingSlashPolicy
 ): Promise<Response | null> {
   const loaded = await plugin.server?.();
   const phase = loaded && "default" in loaded ? loaded.default : loaded;
+  if (trailingSlash) await phase?.setup?.(setupContext(trailingSlash));
   const handler = phase?.endpoints?.[id];
   return handler ? handler({ request } as never) : null;
 }
@@ -152,7 +185,7 @@ test("normalizes explicit entry and alternate trailing slashes", async () => {
     "https://example.com/llms.txt",
     "https://example.com/manifest.json",
     "https://example.com/sitemap.xml",
-    "https://example.com/explicit-file.json/"
+    "https://example.com/explicit-file.json"
   ]);
   assert.match(output, /hreflang="en" href="https:\/\/example\.com\/about\/"/);
   assert.match(output, /hreflang="es" href="https:\/\/example\.com\/es\/about\/"/);
@@ -203,6 +236,122 @@ test("supports async request-time entry sources", async () => {
   assert.equal(response.headers.get("content-type"), "application/xml; charset=utf-8");
   assert.equal(response.headers.get("cache-control"), "public, max-age=0, s-maxage=3600");
   assert.match(await response.text(), /https:\/\/example\.com\/tenant\/acme/);
+});
+
+test("applies framework policies to dynamic entries, alternates, queries, and files", async () => {
+  for (const [policy, expected] of [
+    ["always", [
+      "https://example.com/dynamic/?page=1",
+      "https://example.com/already/",
+      "https://example.com/sitemap.xml",
+      "https://example.com/robots.txt",
+      "https://example.com/llms.txt",
+      "https://example.com/data.json",
+      "https://example.com/image.webp"
+    ]],
+    ["never", [
+      "https://example.com/dynamic?page=1",
+      "https://example.com/already",
+      "https://example.com/sitemap.xml",
+      "https://example.com/robots.txt",
+      "https://example.com/llms.txt",
+      "https://example.com/data.json",
+      "https://example.com/image.webp"
+    ]],
+    ["preserve", [
+      "https://example.com/dynamic?page=1",
+      "https://example.com/already/",
+      "https://example.com/sitemap.xml",
+      "https://example.com/robots.txt",
+      "https://example.com/llms.txt",
+      "https://example.com/data.json",
+      "https://example.com/image.webp"
+    ]]
+  ] as const) {
+    const plugin = createSitemapPlugin({
+      siteUrl: "https://example.com",
+      autoDiscover: false,
+      entries: async () => [{
+        path: "/dynamic?page=1",
+        alternates: { es: "/es/dynamic?lang=es" }
+      }, "/already/", "/sitemap.xml", "/robots.txt", "/llms.txt", "/data.json", "/image.webp"]
+    });
+    const response = await callEndpoint(
+      plugin,
+      "sitemap",
+      new Request("https://example.com/sitemap.xml"),
+      policy
+    );
+    const output = await response!.text();
+
+    assert.deepEqual(sitemapLocations(output), expected);
+    assert.match(
+      output,
+      policy === "always"
+        ? /href="https:\/\/example\.com\/es\/dynamic\/\?lang=es"/
+        : /href="https:\/\/example\.com\/es\/dynamic\?lang=es"/
+    );
+  }
+});
+
+test("uses entry, auto-discovery, and framework policy precedence", async () => {
+  const plugin = createSitemapPlugin({
+    siteUrl: "https://example.com",
+    autoDiscover: { trailingSlash: "always" },
+    entries: [
+      "/from-auto-default",
+      { path: "/entry-never/", trailingSlash: "never" },
+      { path: "/entry-preserve/", trailingSlash: "preserve" },
+      { path: "/legacy-boolean", trailingSlash: true }
+    ]
+  });
+  const response = await callEndpoint(
+    plugin,
+    "sitemap",
+    new Request("https://example.com/sitemap.xml"),
+    "never"
+  );
+
+  assert.deepEqual(sitemapLocations(await response!.text()), [
+    "https://example.com/from-auto-default/",
+    "https://example.com/entry-never",
+    "https://example.com/entry-preserve/",
+    "https://example.com/legacy-boolean/"
+  ]);
+});
+
+test("passes the same framework policy to static and runtime sitemap rendering", async () => {
+  const plugin = createSitemapPlugin({
+    siteUrl: "https://example.com",
+    autoDiscover: false,
+    entries: ["/docs?source=sitemap", "/asset.png"]
+  });
+  const buildPhase = await setupPluginPhase(plugin, "build", "always");
+  const vitePlugin = buildPhase.build.plugins.sitemap as {
+    configResolved(config: { build?: { ssr?: unknown } }): void;
+    generateBundle(this: {
+      emitFile(file: { fileName: string; source: string }): void;
+    }): Promise<void>;
+  };
+  const emitted: Array<{ fileName: string; source: string }> = [];
+  vitePlugin.configResolved({ build: { ssr: false } });
+  await vitePlugin.generateBundle.call({
+    emitFile(file) {
+      emitted.push(file);
+    }
+  });
+  const runtime = await callEndpoint(
+    plugin,
+    "sitemap",
+    new Request("https://example.com/sitemap.xml"),
+    "always"
+  );
+
+  assert.equal(emitted[0]?.source, await runtime!.text());
+  assert.deepEqual(sitemapLocations(emitted[0]?.source ?? ""), [
+    "https://example.com/docs/?source=sitemap",
+    "https://example.com/asset.png"
+  ]);
 });
 
 test("serves HEAD without a response body", async () => {

@@ -20,6 +20,8 @@ import type {
   StructuredDataProps,
   StructuredDataScriptProps,
   StructuredDataSite,
+  StructuredDataTrailingSlashPolicy,
+  StructuredDataUrlPolicy,
   StructuredDataValue,
   WebSiteMetadata,
 } from "./types.js";
@@ -48,12 +50,18 @@ export type {
   StructuredDataResolver,
   StructuredDataScriptProps,
   StructuredDataSite,
+  StructuredDataTrailingSlashPolicy,
+  StructuredDataUrlPolicy,
   StructuredDataValue,
   WebSiteMetadata,
 } from "./types.js";
 
 const SCHEMA_CONTEXT = "https://schema.org";
 const DEFAULT_SCRIPT_ID = "tavo-structured-data";
+const sitePolicySetters = new WeakMap<
+  StructuredDataSite,
+  (policy: StructuredDataUrlPolicy) => void
+>();
 
 type JsonObject = Readonly<Record<string, unknown>>;
 
@@ -107,6 +115,65 @@ function resolveHttpUrl(site: URL, value: string, label: string): string {
     );
   }
   return resolved.href;
+}
+
+function assertUrlPolicy(
+  value: StructuredDataUrlPolicy | undefined,
+  label = "urlPolicy",
+): void {
+  if (
+    value !== undefined &&
+    value.trailingSlash !== "always" &&
+    value.trailingSlash !== "never" &&
+    value.trailingSlash !== "preserve"
+  ) {
+    throw new Error(
+      `tavo structured data: ${label}.trailingSlash must be "always", "never", or "preserve".`,
+    );
+  }
+}
+
+function isExplicitAbsoluteUrl(value: string): boolean {
+  return /^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith("//");
+}
+
+function isFileLikeUrl(value: URL): boolean {
+  const pathname = value.pathname.replace(/\/+$/, "");
+  const basename = pathname.slice(pathname.lastIndexOf("/") + 1);
+  return basename.includes(".");
+}
+
+function resolvePageUrl(
+  site: URL,
+  value: string,
+  label: string,
+  urlPolicy: StructuredDataUrlPolicy | undefined,
+): string {
+  const normalized = assertNonEmpty(value, label);
+  const resolved = resolveHttpUrl(site, normalized, label);
+  if (
+    urlPolicy === undefined ||
+    urlPolicy.trailingSlash === "preserve" ||
+    isExplicitAbsoluteUrl(normalized) ||
+    normalized.startsWith("#") ||
+    normalized.startsWith("?")
+  ) {
+    return resolved;
+  }
+
+  const canonical = new URL(resolved);
+  if (
+    canonical.pathname === "/" ||
+    (urlPolicy.trailingSlash === "always" && isFileLikeUrl(canonical))
+  ) {
+    return canonical.href;
+  }
+  const pathname = canonical.pathname.replace(/\/+$/, "");
+  canonical.pathname =
+    urlPolicy.trailingSlash === "always"
+      ? `${pathname}/`
+      : pathname || "/";
+  return canonical.href;
 }
 
 function resolveEntityId(
@@ -376,6 +443,7 @@ export function createBreadcrumbList(
   options: BreadcrumbListMetadata,
 ): StructuredDataNode {
   const site = normalizeSiteUrl(options.siteUrl);
+  assertUrlPolicy(options.urlPolicy);
   if (options.items.length < 2) {
     throw new Error(
       "tavo structured data: breadcrumbs require at least two items.",
@@ -395,7 +463,12 @@ export function createBreadcrumbList(
       ...(item.url === undefined
         ? {}
         : {
-            item: resolveHttpUrl(site, item.url, `breadcrumb ${index + 1} URL`),
+            item: resolvePageUrl(
+              site,
+              item.url,
+              `breadcrumb ${index + 1} URL`,
+              options.urlPolicy,
+            ),
           }),
     } satisfies StructuredDataNode;
   });
@@ -412,10 +485,12 @@ export function createSoftwareApplication(
   options: CreateSoftwareApplicationOptions,
 ): StructuredDataNode {
   const site = normalizeSiteUrl(options.siteUrl);
-  const url = resolveHttpUrl(
+  assertUrlPolicy(options.urlPolicy);
+  const url = resolvePageUrl(
     site,
     options.url ?? site.href,
     "software application URL",
+    options.urlPolicy,
   );
   const price = options.offers.price;
   if (!Number.isFinite(price) || price < 0) {
@@ -500,7 +575,14 @@ export function createSoftwareApplication(
           }),
       ...(options.offers.url === undefined
         ? {}
-        : { url: resolveHttpUrl(site, options.offers.url, "offer URL") }),
+        : {
+            url: resolvePageUrl(
+              site,
+              options.offers.url,
+              "offer URL",
+              options.urlPolicy,
+            ),
+          }),
     },
     ...(options.aggregateRating === undefined
       ? {}
@@ -551,6 +633,8 @@ export function createStructuredDataSite(
   options: CreateStructuredDataSiteOptions,
 ): StructuredDataSite {
   const site = normalizeSiteUrl(options.siteUrl);
+  assertUrlPolicy(options.urlPolicy);
+  let activeUrlPolicy = options.urlPolicy;
   const applications = options.applications ?? [];
   for (const application of applications) {
     normalizeRoutePath(application.path, "software application path");
@@ -606,9 +690,12 @@ export function createStructuredDataSite(
           ...application,
           authorId: application.authorId ?? `${site.href}#organization`,
           siteUrl: site.href,
+          ...(activeUrlPolicy === undefined
+            ? {}
+            : { urlPolicy: activeUrlPolicy }),
           url:
             application.url ??
-            resolveHttpUrl(site, applicationPath, "software application path"),
+            applicationPath,
         }),
       );
     }
@@ -617,6 +704,9 @@ export function createStructuredDataSite(
         createBreadcrumbList({
           items: breadcrumbs,
           siteUrl: site.href,
+          ...(activeUrlPolicy === undefined
+            ? {}
+            : { urlPolicy: activeUrlPolicy }),
         }),
       );
     }
@@ -624,7 +714,7 @@ export function createStructuredDataSite(
     return dedupeNodes(nodes);
   }
 
-  return {
+  const structuredDataSite: StructuredDataSite = {
     siteUrl: site.href,
     data,
     head(
@@ -642,6 +732,11 @@ export function createStructuredDataSite(
           });
     },
   };
+  sitePolicySetters.set(structuredDataSite, (policy) => {
+    assertUrlPolicy(policy, "framework urlPolicy");
+    activeUrlPolicy = policy;
+  });
+  return structuredDataSite;
 }
 
 export function defineStructuredDataAdapter<T>(
@@ -673,7 +768,20 @@ export const createStructuredDataPlugin: (
   options: CreateStructuredDataPluginOptions,
 ) => StructuredDataPlugin = definePluginFactory(
   (options: CreateStructuredDataPluginOptions) => {
-    const data = defineStructuredData(options.data);
+    if (!options || (options.data === undefined && options.site === undefined)) {
+      throw new Error(
+        "tavo structured data: plugin data or site is required.",
+      );
+    }
+    const data =
+      options.data === undefined ? undefined : defineStructuredData(options.data);
+    const setUrlPolicy =
+      options.site === undefined ? undefined : sitePolicySetters.get(options.site);
+    if (options.site !== undefined && setUrlPolicy === undefined) {
+      throw new Error(
+        "tavo structured data: plugin site must come from createStructuredDataSite().",
+      );
+    }
     const scriptId = options.id ?? DEFAULT_SCRIPT_ID;
     assertNonEmpty(scriptId, "script id");
     return {
@@ -681,21 +789,29 @@ export const createStructuredDataPlugin: (
       version: "1.0.0",
       apiVersion: 1,
       manifest: {
-        head: [
-          {
-            id: "structured-data",
-            key: `tavo:structured-data:${scriptId}`,
-            cardinality: "singleton",
-          },
-        ],
+        ...(data === undefined
+          ? {}
+          : {
+              head: [
+                {
+                  id: "structured-data",
+                  key: `tavo:structured-data:${scriptId}`,
+                  cardinality: "singleton" as const,
+                },
+              ],
+            }),
       },
-      structuredData: data,
+      structuredData: data ?? [],
       server: async () => {
         const { createStructuredDataServerPhase } = await import("./server.js");
-        return createStructuredDataServerPhase(data, {
-          id: scriptId,
-          ...(options.nonce === undefined ? {} : { nonce: options.nonce }),
-        });
+        return createStructuredDataServerPhase(
+          data,
+          {
+            id: scriptId,
+            ...(options.nonce === undefined ? {} : { nonce: options.nonce }),
+          },
+          setUrlPolicy,
+        );
       },
     };
   },

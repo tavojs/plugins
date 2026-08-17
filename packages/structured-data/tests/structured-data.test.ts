@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { renderToString } from "@tavojs/core";
 import { inspectPluginGraph } from "@tavojs/core/dev";
 import type { PageLoadContext } from "@tavojs/core/router";
+import { createSitemapPlugin } from "../../sitemap/src/index.js";
 import {
   StructuredData,
   createBreadcrumbList,
@@ -40,6 +41,33 @@ function graph(
   }
   const { "@context": _context, ...node } = document;
   return [node as StructuredDataNode];
+}
+
+function urlPolicy(trailingSlash: "always" | "never" | "preserve") {
+  return {
+    trailingSlash,
+    canonicalize(value: string) {
+      const suffixIndex = value.search(/[?#]/);
+      const path = suffixIndex < 0 ? value : value.slice(0, suffixIndex);
+      const suffix = suffixIndex < 0 ? "" : value.slice(suffixIndex);
+      if (path === "/" || trailingSlash === "preserve") return value;
+      const pathname = path.replace(/\/+$/, "");
+      return `${trailingSlash === "always" ? `${pathname}/` : pathname}${suffix}`;
+    },
+  } as const;
+}
+
+function pluginContext(trailingSlash: "always" | "never" | "preserve") {
+  return {
+    instanceId: "default",
+    resolve() {
+      throw new Error("not available in structured-data tests");
+    },
+    tryResolve() {
+      return undefined;
+    },
+    urlPolicy: urlPolicy(trailingSlash),
+  } as never;
 }
 
 test("creates linked WebSite and Organization nodes with normalized URLs", () => {
@@ -131,6 +159,58 @@ test("generates BreadcrumbList positions and permits a URL-less final item", () 
   );
 });
 
+test("applies URL policy to site-relative breadcrumb pages only", () => {
+  const always = createBreadcrumbList({
+    siteUrl: "https://example.com",
+    urlPolicy: urlPolicy("always"),
+    id: "/#breadcrumbs",
+    items: [
+      { name: "Docs", url: "/docs?source=nav#intro" },
+      { name: "Feed", url: "/feed.xml?format=full" },
+      { name: "External", url: "https://outside.example/docs" },
+      { name: "Explicit", url: "https://example.com/legacy" },
+    ],
+  });
+  const never = createBreadcrumbList({
+    siteUrl: "https://example.com",
+    urlPolicy: urlPolicy("never"),
+    items: [
+      { name: "Docs", url: "/docs/" },
+      { name: "Button", url: "/docs/button/?view=full#api" },
+    ],
+  });
+  const preserve = createBreadcrumbList({
+    siteUrl: "https://example.com",
+    urlPolicy: urlPolicy("preserve"),
+    items: [
+      { name: "Docs", url: "/docs" },
+      { name: "Button", url: "/docs/button/" },
+    ],
+  });
+
+  assert.equal(always["@id"], "https://example.com/#breadcrumbs");
+  assert.deepEqual(
+    (always.itemListElement as StructuredDataNode[]).map((item) => item.item),
+    [
+      "https://example.com/docs/?source=nav#intro",
+      "https://example.com/feed.xml?format=full",
+      "https://outside.example/docs",
+      "https://example.com/legacy",
+    ],
+  );
+  assert.deepEqual(
+    (never.itemListElement as StructuredDataNode[]).map((item) => item.item),
+    [
+      "https://example.com/docs",
+      "https://example.com/docs/button?view=full#api",
+    ],
+  );
+  assert.deepEqual(
+    (preserve.itemListElement as StructuredDataNode[]).map((item) => item.item),
+    ["https://example.com/docs", "https://example.com/docs/button/"],
+  );
+});
+
 test("creates free and paid SoftwareApplication offers without inventing ratings", () => {
   const free = createSoftwareApplication({
     siteUrl: "https://example.com",
@@ -189,6 +269,42 @@ test("creates free and paid SoftwareApplication offers without inventing ratings
 
   assert.equal(rated.aggregateRating, aggregateRating);
   assert.deepEqual(rated.review, [review]);
+});
+
+test("normalizes SoftwareApplication page identities without changing resources or entity IDs", () => {
+  const application = createSoftwareApplication({
+    siteUrl: "https://example.com",
+    urlPolicy: urlPolicy("always"),
+    url: "/products/editor?plan=free#download",
+    id: "/#organization",
+    downloadUrl: "/downloads/editor.zip",
+    name: "Editor",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Any",
+    offers: { price: 0, url: "/pricing?product=editor" },
+  });
+  const explicit = createSoftwareApplication({
+    siteUrl: "https://example.com",
+    urlPolicy: urlPolicy("always"),
+    url: "https://example.com/backward-compatible",
+    name: "Explicit",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Any",
+    offers: { price: 0 },
+  });
+
+  assert.equal(
+    application.url,
+    "https://example.com/products/editor/?plan=free#download",
+  );
+  assert.equal(application["@id"], "https://example.com/#organization");
+  assert.equal(application.downloadUrl, "https://example.com/downloads/editor.zip");
+  assert.deepEqual(application.offers, {
+    "@type": "Offer",
+    price: 0,
+    url: "https://example.com/pricing/?product=editor",
+  });
+  assert.equal(explicit.url, "https://example.com/backward-compatible");
 });
 
 test("site metadata generates homepage identity, route applications, and breadcrumbs", () => {
@@ -274,6 +390,88 @@ test("per-call metadata overrides resolver and configured application defaults",
     ["SoftwareApplication"],
   );
   assert.equal(overridden[0]?.name, "Override");
+});
+
+test("site helpers use an explicit policy or the policy supplied by plugin setup", async () => {
+  const standalone = createStructuredDataSite({
+    siteUrl: "https://example.com",
+    urlPolicy: urlPolicy("never"),
+    website: { name: "Example" },
+    organization: { name: "Example" },
+    applications: [{
+      path: "/product/",
+      name: "Product",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      offers: { price: 0 },
+    }],
+  });
+  assert.equal(
+    standalone.data(context("/product"))[0]?.url,
+    "https://example.com/product",
+  );
+
+  const installed = createStructuredDataSite({
+    siteUrl: "https://example.com",
+    website: { name: "Example" },
+    organization: { name: "Example" },
+    applications: [{
+      path: "/product",
+      name: "Product",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      offers: { price: 0 },
+    }],
+  });
+  const plugin = createStructuredDataPlugin({ site: installed });
+  const loaded = await plugin.server?.();
+  const phase = loaded && "default" in loaded ? loaded.default : loaded;
+  await phase?.setup?.(pluginContext("always"));
+
+  assert.deepEqual(inspectPluginGraph([plugin]).head, []);
+  assert.equal(
+    installed.data(context("/product"))[0]?.url,
+    "https://example.com/product/",
+  );
+});
+
+test("JSON-LD page URLs agree with canonical and sitemap URLs", async () => {
+  const policy = urlPolicy("always");
+  const canonical = new URL(policy.canonicalize("/docs?source=test"), "https://example.com").href;
+  const site = createStructuredDataSite({
+    siteUrl: "https://example.com",
+    urlPolicy: policy,
+    website: { name: "Example" },
+    organization: { name: "Example" },
+    resolve() {
+      return {
+        breadcrumbs: [
+          { name: "Home", url: "/" },
+          { name: "Docs", url: "/docs?source=test" },
+        ],
+      };
+    },
+  });
+  const breadcrumb = site.data(context("/docs"))[0]!;
+  const jsonLdUrl = (breadcrumb.itemListElement as StructuredDataNode[])[1]?.item;
+
+  const sitemap = createSitemapPlugin({
+    siteUrl: "https://example.com",
+    autoDiscover: false,
+    entries: ["/docs?source=test"],
+  });
+  const loaded = await sitemap.server?.();
+  const phase = loaded && "default" in loaded ? loaded.default : loaded;
+  await phase?.setup?.(pluginContext("always"));
+  const handler = phase?.endpoints?.sitemap;
+  assert.ok(handler);
+  const response = await handler({
+    request: new Request("https://example.com/sitemap.xml"),
+  } as never);
+  const sitemapUrl = (await response!.text()).match(/<loc>([^<]+)<\/loc>/)?.[1];
+
+  assert.equal(jsonLdUrl, canonical);
+  assert.equal(sitemapUrl, canonical.replace(/&/g, "&amp;"));
 });
 
 test("metadata adapters convert application models without JSON-LD authoring", () => {

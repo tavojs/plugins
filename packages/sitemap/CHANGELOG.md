@@ -8,7 +8,9 @@
 
 ## Unreleased
 
-- Add optional trailing-slash normalization for discovered routes, explicit entries, and alternate-language URLs.
+- Integrate trailing-slash normalization with the framework-resolved URL policy for runtime and static sitemaps.
+- Support `"always"`, `"never"`, and `"preserve"` policies while retaining boolean entry and discovery overrides.
+- Preserve queries and file-like resources when normalizing entries and alternate-language URLs.
 
 ## 1.0.0
 
